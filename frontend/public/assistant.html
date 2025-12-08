@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MediLink:Smart Appointment Booking Assistant</title>
+  <link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body class="app-shell" data-page="assistant">
+  <header class="site-header">
+    <div class="shell">
+      <a class="brand-mark" href="index.html">
+        <span class="brand-icon">✚</span>
+        MediLink : Smart Appointment Booking System
+      </a>
+      <nav class="primary-nav">
+        <a class="nav-link" href="assistant.html">Assistant</a>
+        <a class="nav-link" href="doctors.html">Doctors</a>
+        <a class="nav-link" href="bookings.html">Appointments</a>
+        <button id="btn-login" class="btn btn-ghost">Login / Register</button>
+        <a id="btn-admin" class="btn btn-ghost hidden" href="admin.html">Admin Dashboard</a>
+        <div id="user-badge" class="user-badge hidden"></div>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="layout-grid">
+      <article id="chat" class="card" aria-label="Symptom checker">
+        <div class="card-header">
+          <h1>24/7 MediLink Assistant</h1>
+          <!-- keep the small descriptive hint generic (doesn't trigger replacements) -->
+          <div class="hint">Describe symptoms, medication questions, or booking needs. We keep conversations medical-only for safety.</div>
+        </div>
+        <div id="chat-window" class="chat-window" aria-live="polite" aria-label="Chat conversation"></div>
+        <form id="chat-form" class="chat-form" autocomplete="off">
+          <input id="chat-input" type="text" placeholder="Describe your symptoms or ask about appointments..." aria-label="Message" />
+          <button class="btn btn-primary" type="submit">Send</button>
+        </form>
+        <div class="guard-note">Emergency? Call your local hotline. MediLink is for non-emergent triage and booking support.</div>
+      </article>
+
+      <aside class="sidebar-stack" aria-label="Assistant sidebar">
+
+        <section class="card quick-help">
+          <div class="card-header">
+            <h3>Need inspiration?</h3>
+            <div class="hint">Choose a vetted prompt to see how MediLink responds.</div>
+          </div>
+          <div class="prompt-chips">
+            <button type="button" data-prompt="I feel chest pressure when walking and mild shortness of breath.">Chest discomfort</button>
+            <button type="button" data-prompt="My migraines are back every evening—recommend a neurologist.">Migraines</button>
+            <button type="button" data-prompt="বুকের ডান পাশে হালকা ব্যথা টের পাচ্ছি, শ্বাস নিলে ব্যথাটা বাড়ে">বুকে ব্যথা</button>
+            <button type="button" data-prompt="আমার তীব্র সর্দি-কাশি হয়েছে, নাক বন্ধ, গলা শুকনো আর মাথা ভার লাগছে">সর্দি-কাশি</button>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="booking-modal" class="modal">
+    <form method="dialog" class="modal-card" id="booking-form">
+      <header class="modal-header">
+        <h3>Book Appointment</h3>
+        <button class="icon-btn" value="cancel" aria-label="Close">✕</button>
+      </header>
+      <div class="modal-body">
+        <div id="booking-doctor"></div>
+        <label>Date
+          <input type="date" id="booking-date" required />
+        </label>
+        <label>Time
+          <input type="time" id="booking-time" required />
+        </label>
+        <label>Reason (optional)
+          <input type="text" id="booking-reason" placeholder="e.g., persistent cough, follow-up" />
+        </label>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn btn-primary" id="booking-submit" value="default">Confirm Booking</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="assets/js/app.js"></script>
+
+  <script>
+    (function () {
+      var OLD_PHRASE = "Please ask about medical conditions, symptoms, medicines, or hospital appointment booking.";
+      var GUARD_COPY = "This is not medical advice. A suitable doctor will be suggested based on your condition — please mention the name of your illness.";
+
+      // 1) Replace the top banner if any older copy remains
+      var banner = document.querySelector('.info-message');
+      if (banner && banner.textContent.indexOf(OLD_PHRASE) !== -1) {
+        banner.textContent = GUARD_COPY;
+      } else if (banner && banner.textContent.trim() === '') {
+        banner.textContent = GUARD_COPY;
+      }
+
+      // 2) Replace other static elements that might contain the old phrase
+      var nodesToCheck = [
+        document.querySelector('.guard-note'),
+        document.querySelector('.hint'),
+        document.querySelector('#chat-input')
+      ];
+      nodesToCheck.forEach(function (n) {
+        if (!n) return;
+        var txt = n.placeholder || n.textContent || n.value || '';
+        if (txt.indexOf(OLD_PHRASE) !== -1) {
+          if (n.placeholder !== undefined && n.placeholder !== null) {
+            n.placeholder = (n.placeholder === OLD_PHRASE) ? GUARD_COPY : n.placeholder.replace(OLD_PHRASE, GUARD_COPY);
+          } else {
+            n.textContent = txt.replace(OLD_PHRASE, GUARD_COPY);
+          }
+        }
+      });
+
+      // 3) Replace existing chat-window messages (exact matches or containing the old phrase)
+      var chatWindow = document.getElementById('chat-window');
+      function replaceInNode(node) {
+        if (!node) return;
+        // text nodes
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (node.nodeValue && node.nodeValue.indexOf(OLD_PHRASE) !== -1) {
+            node.nodeValue = node.nodeValue.replace(OLD_PHRASE, GUARD_COPY);
+          }
+          return;
+        }
+        // element nodes: check textContent and children
+        if (node.textContent && node.textContent.indexOf(OLD_PHRASE) !== -1) {
+          // replace inner text only where phrase appears
+          node.innerHTML = node.innerHTML.split(OLD_PHRASE).join(GUARD_COPY);
+        }
+      }
+
+      if (chatWindow) {
+        var children = Array.from(chatWindow.querySelectorAll('*'));
+        children.forEach(replaceInNode);
+      }
+
+      // 4) Watch for future changes (chat messages added by app.js) and patch them immediately
+      if (chatWindow && window.MutationObserver) {
+        var observer = new MutationObserver(function (mutations) {
+          mutations.forEach(function (m) {
+            m.addedNodes && m.addedNodes.forEach(function (n) {
+              replaceInNode(n);
+              // also check subtree quickly
+              if (n.querySelectorAll) {
+                n.querySelectorAll('*').forEach(replaceInNode);
+              }
+            });
+            // handle text changes inside nodes
+            if (m.type === 'characterData' && m.target) {
+              replaceInNode(m.target);
+            }
+          });
+        });
+
+        observer.observe(chatWindow, {
+          childList: true,
+          subtree: true,
+          characterData: true
+        });
+      }
+
+      // 5) For safety: also patch future additions anywhere in the document (lightweight)
+      if (window.MutationObserver) {
+        var bodyObserver = new MutationObserver(function (mutations) {
+          mutations.forEach(function (m) {
+            m.addedNodes && m.addedNodes.forEach(function (n) {
+              replaceInNode(n);
+              if (n.querySelectorAll) n.querySelectorAll('*').forEach(replaceInNode);
+            });
+          });
+        });
+        bodyObserver.observe(document.body, { childList: true, subtree: true });
+      }
+    })();
+  </script>
+
+  <script>
+    // Auth guard: prevent access to assistant page for unauthenticated users.
+    (function(){
+      try{
+        var token = localStorage.getItem('ml_token');
+        if(!token){
+          var next = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
+          // delay slightly to allow any pending UI (optional) then redirect
+          setTimeout(function(){ window.location.href = 'login.html?next='+next; }, 80);
+        }
+      }catch(e){ /* ignore */ }
+    })();
+  </script>
+
+</body>
+</html>
